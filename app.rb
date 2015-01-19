@@ -25,8 +25,8 @@ module Quibb
     def data
       posts.inject([]) do |all, post_raw|
         post = Quibb::Post.new(post_raw)
-        current = { quibb_link: post.quibb_link, title: post.title, user_url: post.user_url, user_name: post.user_name,
-                    user_position: post.user_position, views: post.views, stars: post.stars, comments: post.comments, date_time: Time.now }
+        current = post.data
+        current = current.merge({ date_time: Time.now })
         all << current
         all
       end
@@ -44,6 +44,21 @@ module Quibb
   end
 end
 
+# module Quibb
+#   class Page
+#     TOP_STORIES_URL = 'http://quibb.com/stories/top'
+
+#     attr_reader :auth, :html
+
+#     def initialize(auth, page_number)
+#       auth = auth
+#       byebug
+#       html = Mechanize.new.get("#{ TOP_STORIES_URL }/#{ page_number }")
+
+#     end
+#   end
+# end
+
 module Quibb
   class Post
     attr_reader :post
@@ -51,6 +66,13 @@ module Quibb
     def initialize(post)
       @post = post
     end
+
+    def data
+      { quibb_link: quibb_link, title: title, user_url: user_url, user_name: user_name,
+        user_position: user_position, views: views, stars: stars, comments: comments }
+    end
+
+    private
 
     def quibb_link
       full_title[0].children[2].attributes['href'].value
