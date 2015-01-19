@@ -16,6 +16,7 @@ module Quibb
       @auth_form        = auth_page.form
       @auth_page        = login
       @top_stories_page = agent.get(TOP_STORIES_URL)
+      return
     end
 
     def posts
@@ -44,25 +45,22 @@ module Quibb
   end
 end
 
-# module Quibb
-#   class Page
-#     TOP_STORIES_URL = 'http://quibb.com/stories/top'
+module Quibb
+  class Page
+    TOP_STORIES_URL = 'http://quibb.com/stories/top'
 
-#     attr_reader :auth, :html
-
-#     def initialize(auth, page_number)
-#       auth = auth
-#       byebug
-#       html = Mechanize.new.get("#{ TOP_STORIES_URL }/#{ page_number }")
-
-#     end
-#   end
-# end
+    attr_reader :html
+    def initialize(auth, page_number)
+      @html = auth.agent.get("#{ TOP_STORIES_URL }?page=#{ page_number }")
+      return
+    end
+  end
+end
 
 module Quibb
   class Post
-    attr_reader :post
 
+    attr_reader :post
     def initialize(post)
       @post = post
     end
