@@ -8,30 +8,29 @@ module Quibb
     TWITTER_AUTH_URL = 'http://quibb.com/auth/twitter'
     TOP_STORIES_URL = 'http://quibb.com/stories/top'
 
-    attr_reader :agent, :auth_page, :auth_form, :auth_page, :top_stories_page
+    attr_reader :agent, :auth_page, :auth_form, :auth_page#, :top_stories_page
 
     def initialize
       @agent            = Mechanize.new
       @auth_page        = agent.get(TWITTER_AUTH_URL)
       @auth_form        = auth_page.form
       @auth_page        = login
-      @top_stories_page = agent.get(TOP_STORIES_URL)
-      return
+      # @top_stories_page = agent.get(TOP_STORIES_URL)
     end
 
-    def posts
-      top_stories_page.search('.infinite_row')
-    end
+    # def posts
+    #   top_stories_page.search('.infinite_row')
+    # end
 
-    def data
-      posts.inject([]) do |all, post_raw|
-        post = Quibb::Post.new(post_raw)
-        current = post.data
-        current = current.merge({ date_time: Time.now })
-        all << current
-        all
-      end
-    end
+    # def data
+    #   posts.inject([]) do |all, post_raw|
+    #     post = Quibb::Post.new(post_raw)
+    #     current = post.data
+    #     current = current.merge({ date_time: Time.now })
+    #     all << current
+    #     all
+    #   end
+    # end
 
     private
 
@@ -49,10 +48,21 @@ module Quibb
   class Page
     TOP_STORIES_URL = 'http://quibb.com/stories/top'
 
-    attr_reader :html
+    attr_reader :posts
+
     def initialize(auth, page_number)
-      @html = auth.agent.get("#{ TOP_STORIES_URL }?page=#{ page_number }")
-      return
+      html = auth.agent.get("#{ TOP_STORIES_URL }?page=#{ page_number }")
+      @posts = html.search('.infinite_row')
+    end
+
+    def data
+      posts.inject([]) do |all, post_raw|
+        post = Quibb::Post.new(post_raw)
+        current = post.data
+        current = current.merge({ date_time: Time.now })
+        all << current
+        all
+      end
     end
   end
 end
