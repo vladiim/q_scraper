@@ -28,6 +28,7 @@ GEM
     nokogiri (1.6.5)
       mini_portile (~> 0.6.0)
     ntlm-http (0.1.1)
+    sequel (4.18.0)
     slop (3.6.0)
     unf (0.1.4)
       unf_ext
@@ -41,3 +42,4 @@ DEPENDENCIES
   byebug
   dotenv
   mechanize
+  sequel

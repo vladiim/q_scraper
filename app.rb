@@ -1,36 +1,113 @@
 require 'mechanize'
 require 'byebug'
+require 'sequel'
+
 require 'dotenv'
 Dotenv.load
 
 module Quibb
-  class Auth
-    TWITTER_AUTH_URL = 'http://quibb.com/auth/twitter'
-    TOP_STORIES_URL = 'http://quibb.com/stories/top'
-
-    attr_reader :agent, :auth_page, :auth_form, :auth_page#, :top_stories_page
+  class Scraper
+    attr_reader :auth, :data, :page_n
 
     def initialize
-      @agent            = Mechanize.new
-      @auth_page        = agent.get(TWITTER_AUTH_URL)
-      @auth_form        = auth_page.form
-      @auth_page        = login
-      # @top_stories_page = agent.get(TOP_STORIES_URL)
+      @auth   = Quibb::Auth.new
+      @data   = []
+      @page_n = (0..100)
     end
 
-    # def posts
-    #   top_stories_page.search('.infinite_row')
-    # end
+    def scrape
+      begin
+        # fetch_data
+        data = page_n.inject([]) do |all_data, n|
+          page_data = Quibb::Page.new(auth, n).data
+          all_data << page_data
+        end.flatten
+      rescue #NoMethodError
+        # print "No more results"
+      end
+    end
 
-    # def data
-    #   posts.inject([]) do |all, post_raw|
-    #     post = Quibb::Post.new(post_raw)
-    #     current = post.data
-    #     current = current.merge({ date_time: Time.now })
-    #     all << current
-    #     all
-    #   end
-    # end
+    def save
+      return 'Scrape data first' if data.empty?
+
+    end
+
+    private
+
+    def fetch_data
+      @data = page_n.inject([]) do |all_data, n|
+        page_data = Quibb::Page.new(auth, n).data
+        all_data << page_data
+      end.flatten
+    end
+  end
+end
+
+module Quibb
+  class DB
+    attr_reader :connection
+    def initialize
+      @connection = Sequel.sqlite
+      create_tables unless exsists?
+      connection
+    end
+
+    private
+
+    def exsists?
+      connection[:users] && connection[:articles]
+    end
+
+    def create_tables
+      create_users
+      create_articles
+      create_metrics
+    end
+
+    def create_users
+      connection.create_table :users do
+        primary_key :id
+        String :name
+        String :url
+        String :position
+      end
+    end
+
+    def create_articles
+      connection.create_table :articles do
+        primary_key :id
+        String :quibb_url
+        String :title
+        Integer :user_id
+      end
+    end
+
+    def create_metrics
+      connection.create_table :metrics do
+        primary_key :id
+        DateTime :date_time
+        Integer :views
+        Integer :stars
+        Integer :comments
+        Integer :rank
+        Integer :article_id
+      end
+    end
+  end
+end
+
+module Quibb
+  class Auth
+    TWITTER_AUTH_URL = 'http://quibb.com/auth/twitter'
+
+    attr_reader :agent, :auth_page, :auth_form, :auth_page
+
+    def initialize
+      @agent     = Mechanize.new
+      @auth_page = agent.get(TWITTER_AUTH_URL)
+      @auth_form = auth_page.form
+      @auth_page = login
+    end
 
     private
 
@@ -48,18 +125,20 @@ module Quibb
   class Page
     TOP_STORIES_URL = 'http://quibb.com/stories/top'
 
-    attr_reader :posts
+    attr_reader :posts, :page_number
 
     def initialize(auth, page_number)
-      html = auth.agent.get("#{ TOP_STORIES_URL }?page=#{ page_number }")
-      @posts = html.search('.infinite_row')
+      @page_number = page_number
+      html         = auth.agent.get("#{ TOP_STORIES_URL }?page=#{ page_number }")
+      @posts       = html.search('.infinite_row')
+      # throw :end_results if posts.empty?
     end
 
     def data
-      posts.inject([]) do |all, post_raw|
-        post = Quibb::Post.new(post_raw)
+      posts.each_with_index.inject([]) do |all, (post_raw, n)|
+        post    = Quibb::Post.new(post_raw)
         current = post.data
-        current = current.merge({ date_time: Time.now })
+        current = current.merge({ date_time: Time.now, rank: page_number + n + 1 })
         all << current
         all
       end
@@ -117,8 +196,8 @@ module Quibb
     def viewers
       viewers_string = body_strings[8][0..-18]
       viewers_array  = viewers_string.split(',')
-      last_viwer     = viewers_array.pop[5..-1]
-      viewers_array << last_viwer
+      last_viewer    = viewers_array.pop[5..-1]
+      viewers_array << last_viewer
       viewers_array.collect { |viewer| viewer.strip }
     end
 
