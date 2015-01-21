@@ -17,19 +17,15 @@ module Quibb
 
     def scrape
       begin
-        # fetch_data
-        data = page_n.inject([]) do |all_data, n|
-          page_data = Quibb::Page.new(auth, n).data
-          all_data << page_data
-        end.flatten
-      rescue #NoMethodError
-        # print "No more results"
+        extract_page_data if data.empty?
+      rescue NoMethodError
+        print "No more results"
       end
     end
 
     def save
       return 'Scrape data first' if data.empty?
-
+      Quibb::DataSaver.new(data).save
     end
 
     private
@@ -40,6 +36,60 @@ module Quibb
         all_data << page_data
       end.flatten
     end
+
+    def extract_page_data
+      page_n.each do |n|
+        page_data = Quibb::Page.new(auth, n).data
+        data << page_data
+        data.flatten!
+      end
+    end
+  end
+end
+
+module Quibb
+  class DataSaver
+    attr_reader :data, :db
+
+    def initialize(data)
+      @data = data
+      @db = Quibb::DB.new.connection
+    end
+
+    def save
+      data.each do |d|
+        user_id = save_user(d)
+        article_id = save_article(d, user_id)
+        save_metric(d, article_id)
+      end
+    end
+
+    private
+
+    def save_user(d)
+      db[:users].insert(name:     d.fetch(:user_name),
+                        url:      d.fetch(:user_url),
+                        position: d.fetch(:user_position))
+    end
+
+    def save_article(d, user_id)
+      db[:articles].insert(quibb_url: d.fetch(:quibb_link),
+                           title:     d.fetch(:title),
+                           original_domain: d.fetch(:original_domain)
+                           user_id:   user_id)
+      # data/time published
+      # original domain
+    end
+
+    def save_metric(d, article_id)
+      db[:metrics].insert(date_time:  d.fetch(:date_time),
+                          views:      d.fetch(:views),
+                          stars:      d.fetch(:stars),
+                          comments:   d.fetch(:comments),
+                          rank:       d.fetch(:rank),
+                          date_time:  d.fetch(:date_time),
+                          article_id: article_id)
+    end
   end
 end
 
@@ -47,16 +97,13 @@ module Quibb
   class DB
     attr_reader :connection
     def initialize
-      @connection = Sequel.sqlite
-      create_tables unless exsists?
+      #@connection = Sequel.sqlite
+      @connection = Sequel.connect('sqlite://quibb.db')
+      create_tables
       connection
     end
 
-    private
-
-    def exsists?
-      connection[:users] && connection[:articles]
-    end
+    # private
 
     def create_tables
       create_users
@@ -77,6 +124,7 @@ module Quibb
       connection.create_table :articles do
         primary_key :id
         String :quibb_url
+        String :original_domain
         String :title
         Integer :user_id
       end
@@ -155,11 +203,12 @@ module Quibb
     end
 
     def data
-      { quibb_link: quibb_link, title: title, user_url: user_url, user_name: user_name,
-        user_position: user_position, views: views, stars: stars, comments: comments }
+      { quibb_link: quibb_link, title: title, original_domain: original_domain, user_url: user_url,
+        user_name: user_name, user_position: user_position, views: views, stars: stars,
+        comments: comments }
     end
 
-    private
+    # private
 
     def quibb_link
       full_title[0].children[2].attributes['href'].value
@@ -167,6 +216,10 @@ module Quibb
 
     def title
       full_title[0].children[2].children[0].to_s
+    end
+
+    def original_domain
+      full_title[0].children[1].attributes["data-original-title"].value
     end
 
     def user_url
