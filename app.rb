@@ -25,7 +25,12 @@ module Quibb
 
     def save
       return 'Scrape data first' if data.empty?
-      Quibb::DataSaver.new(data).save
+      saver.save
+    end
+
+    attr_reader :saver
+    def saver
+      @saver ||= Quibb::DataSaver.new(data)
     end
 
     private
@@ -53,42 +58,64 @@ module Quibb
 
     def initialize(data)
       @data = data
-      @db = Quibb::DB.new.connection
+      @db   = Quibb::DB.new.connection
     end
 
     def save
       data.each do |d|
-        user_id = save_user(d)
+        user_id    = save_user(d)
         article_id = save_article(d, user_id)
-        save_metric(d, article_id)
+        create_new_metric(d, article_id)
       end
+    end
+
+    def find_user(d)
+      db[:users].filter(name: d.fetch(:user_name),
+          url:      d.fetch(:user_url),
+          position: d.fetch(:user_position)).first
+    end
+
+    def find_article(d)
+      db[:articles].filter(quibb_url: d.fetch(:quibb_link),
+         title:           d.fetch(:title),
+         original_domain: d.fetch(:original_domain)).first
     end
 
     private
 
     def save_user(d)
+      user = find_user(d)
+      return user.fetch(:id) if user
+      create_new_user(d)
+    end
+
+    def save_article(d, user_id)
+      article = find_article(d)
+      return article.fetch(:id) if article
+      create_new_article(d, user_id)
+    end
+
+    def create_new_user(d)
       db[:users].insert(name:     d.fetch(:user_name),
                         url:      d.fetch(:user_url),
                         position: d.fetch(:user_position))
     end
 
-    def save_article(d, user_id)
+    def create_new_article(d, user_id)
       db[:articles].insert(quibb_url: d.fetch(:quibb_link),
-                           title:     d.fetch(:title),
-                           original_domain: d.fetch(:original_domain)
-                           user_id:   user_id)
-      # data/time published
-      # original domain
+         title:           d.fetch(:title),
+         original_domain: d.fetch(:original_domain),
+         user_id:         user_id)
     end
 
-    def save_metric(d, article_id)
+    def create_new_metric(d, article_id)
       db[:metrics].insert(date_time:  d.fetch(:date_time),
-                          views:      d.fetch(:views),
-                          stars:      d.fetch(:stars),
-                          comments:   d.fetch(:comments),
-                          rank:       d.fetch(:rank),
-                          date_time:  d.fetch(:date_time),
-                          article_id: article_id)
+        views:      d.fetch(:views),
+        stars:      d.fetch(:stars),
+        comments:   d.fetch(:comments),
+        rank:       d.fetch(:rank),
+        date_time:  d.fetch(:date_time),
+        article_id: article_id)
     end
   end
 end
@@ -98,12 +125,17 @@ module Quibb
     attr_reader :connection
     def initialize
       #@connection = Sequel.sqlite
-      @connection = Sequel.connect('sqlite://quibb.db')
-      create_tables
+      # @connection = Sequel.connect('sqlite://quibb.db')
+      @connection = Sequel.connect("postgres://#{ ENV['DB_U'] }:#{ ENV['DB_P']}@#{ ENV['DB_H'] }:#{ ENV['DB_PORT'] }/#{ ENV['DB_N'] }")
+      create_tables unless tables_exsist?
       connection
     end
 
-    # private
+    private
+
+    def tables_exsist?
+      connection.tables == [:users, :articles, :metrics]
+    end
 
     def create_tables
       create_users
@@ -179,7 +211,6 @@ module Quibb
       @page_number = page_number
       html         = auth.agent.get("#{ TOP_STORIES_URL }?page=#{ page_number }")
       @posts       = html.search('.infinite_row')
-      # throw :end_results if posts.empty?
     end
 
     def data
@@ -208,7 +239,7 @@ module Quibb
         comments: comments }
     end
 
-    # private
+    private
 
     def quibb_link
       full_title[0].children[2].attributes['href'].value
